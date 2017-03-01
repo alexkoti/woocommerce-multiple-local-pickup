@@ -32,13 +32,14 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
         $this->init_form_fields();
         
         // Define user set variables.
-        $this->enabled            = $this->get_option( 'enabled' );
-        $this->title              = $this->get_option( 'title' );
-        $this->shipping_class     = $this->get_option( 'shipping_class' );
-        $this->show_delivery_time = $this->get_option( 'show_delivery_time' );
-        $this->additional_time    = $this->get_option( 'additional_time' );
-        $this->fee                = $this->get_option( 'fee' );
-        $this->debug              = $this->get_option( 'debug' );
+        $this->enabled                = $this->get_option( 'enabled' );
+        $this->title                  = $this->get_option( 'title' );
+        $this->shipping_class         = $this->get_option( 'shipping_class' );
+        $this->show_delivery_time     = $this->get_option( 'show_delivery_time' );
+        $this->additional_time        = $this->get_option( 'additional_time' );
+        $this->fee                    = $this->get_option( 'fee' );
+        $this->pickup_locations       = $this->get_option( 'pickup_locations' );
+        $this->debug                  = $this->get_option( 'debug' );
 
         // Save admin options.
         add_action( 'woocommerce_update_options_shipping_' . $this->id, array( $this, 'process_admin_options' ) );
@@ -110,6 +111,24 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
                 'placeholder' => '0.00',
                 'default'     => '',
             ),
+            'pickup_locations' => array(
+                'title'       => 'Locais',
+                'type'        => 'multiselect',
+                'description' => '',
+                'desc_tip'    => true,
+                'placeholder' => '',
+                'default'     => '',
+                'class'       => 'wc-enhanced-select',
+                'options'     => self::get_available_locations(),
+            ),
+            'test' => array(
+                'title'       => 'TEST',
+                'type'        => 'brt_repeater',
+                'description' => 'asasas',
+                'desc_tip'    => true,
+                'placeholder' => '',
+                'default'     => '',
+            ),
         );
     }
         
@@ -124,13 +143,9 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             'label'     => $this->title,
             'cost'      => $this->fee,
             'taxes'     => false,
-            'package'   => $package,
+            'package'   => false,
             'meta_data' => array(
-                'pickup_locations' => array(
-                    'loja-1' => 'Loja 1',
-                    'loja-2' => 'Loja 2',
-                    'loja-3' => 'Loja 3',
-                ),
+                'pickup_locations' => $this->pickup_locations,
                 'pickup_chosen_location' => WC()->session->get( 'pickup_chosen_location' ),
             ),
         ) );
@@ -146,7 +161,7 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             
             //pre( $method, 'multiple-local-pickup PRE' );
             
-            $class = 'brt-display-none';
+            $class = 'brt-display-none-';
             $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
             if( $chosen_shipping_methods[0] == $method->id ){
                 $class = 'brt-display-block';
@@ -156,19 +171,86 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             //$method->add_meta_data( 'location', 'lorem' );
             
             $meta_data = $method->get_meta_data();
+            $all_locations = self::get_available_locations();
+            //pre($meta_data['pickup_locations']);
+            
             
             // aplicar padrão caso ainda não tenha sido escolhido o location
             //$checked = !empty($meta_data['pickup_chosen_location']) ? $meta_data['pickup_chosen_location'] : key($meta_data['pickup_locations']);
             $checked = $meta_data['pickup_chosen_location'];
             
-            echo "<ul class='pickup-locations {$class}'>";
-            foreach( $meta_data['pickup_locations'] as $key => $label ){
+            echo "<ul id='multiple-pickup-locations-list' class='pickup-locations {$class}'>";
+            foreach( $meta_data['pickup_locations'] as $key ){
                 $is_checked = checked( $key, $checked, false );
-                echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> {$label}</label></li>";
+                echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> {$all_locations[$key]}</label></li>";
             }
             echo "</ul>";
             
             //pre( $method, 'multiple-local-pickup POS' );
         }
     }
+    
+    public static function get_available_locations(){
+        return array(
+            'Loja 1' => 'Loja 1 <span>Rua Jacarandá, n° 123, Centro</span>',
+            'Loja 2' => 'Loja 2 <span>Avenida do Oceano, n°10, Zona Norte</span>',
+            'Loja 3' => 'Loja 3 <span>Rua dos Bobos n°0, Bairro Inexistente</span>',
+            'Loja 4' => 'Loja 4 <span>Avenida Dois n° 200, 6° andar, loja 123, Zona Portuária</span>',
+            'Loja 5' => 'Loja 5 <span>Avenida Um</span>',
+            'Loja 6' => 'Loja 6 <span>Rua Sem Saída, sem número, portinhola azul</span>',
+        );
+    }
+    
+    /**
+     * Custom form field
+     * 
+     */
+    function generate_brt_repeater_html( $key, $data ){
+        $field_key = $this->get_field_key( $key );
+        $defaults  = array(
+            'title'             => '',
+            'disabled'          => false,
+            'class'             => '',
+            'css'               => '',
+            'placeholder'       => '',
+            'type'              => 'text',
+            'desc_tip'          => false,
+            'description'       => '',
+            'custom_attributes' => array(),
+        );
+
+        $data = wp_parse_args( $data, $defaults );
+
+        ob_start();
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label for="<?php echo esc_attr( $field_key ); ?>"><?php echo wp_kses_post( $data['title'] ); ?></label>
+                <?php echo $this->get_tooltip_html( $data ); ?>
+            </th>
+            <td class="forminp">
+                <fieldset>
+                    <legend class="screen-reader-text"><span><?php echo wp_kses_post( $data['title'] ); ?></span></legend>
+                    <input 
+                        class="input-text regular-input <?php echo esc_attr( $data['class'] ); ?>" 
+                        type="text" 
+                        name="<?php echo esc_attr( $field_key ); ?>" 
+                        id="<?php echo esc_attr( $field_key ); ?>" 
+                        style="<?php echo esc_attr( $data['css'] ); ?>" 
+                        value="<?php echo esc_attr( wc_format_localized_price( $this->get_option( $key ) ) ); ?>" 
+                        placeholder="<?php echo esc_attr( $data['placeholder'] ); ?>" 
+                        <?php disabled( $data['disabled'], true ); ?> 
+                        <?php echo $this->get_custom_attribute_html( $data ); ?>
+                    />
+                    <?php echo $this->get_description_html( $data ); ?>
+                    <p>ESTE É UM CAMPO DE TESTE DE LOCAIS DE RETIRADA</p>
+                </fieldset>
+            </td>
+        </tr>
+        <?php
+        return ob_get_clean();
+    }
+    
+    
+    
 }
