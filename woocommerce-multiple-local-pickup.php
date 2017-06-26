@@ -75,13 +75,13 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
                 // registrar ajax
                 add_action( 'wc_ajax_' . $this->ajax_endpoint, array( $this, 'update_pickup_location' ) );
                 
-                // exibir location no frontend
+                // exibir location no frontend na tela de pedido
                 add_filter( 'woocommerce_order_shipping_to_display', array( $this, 'shipping_to_display_order_frontend' ), 10, 2 );
                 
                 // exibir label do 'pickup_chosen_location' na individual de pedido no admin
                 add_filter( 'woocommerce_attribute_label', array( $this, 'admin_order_location_label' ), 10, 3 );
                 
-                // exibir location na listagem de pedidos
+                // exibir location na listagem de pedidos E email para usuário
                 add_filter( 'woocommerce_order_shipping_method', array( $this, 'order_shipping_method' ), 10, 2 );
             } else {
                 add_action( 'admin_notices', array( $this, 'woocommerce_missing_notice' ) );
@@ -146,10 +146,10 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          * 
          */
         function update_pickup_location(){
-            $value = $_POST['location'];
-            
-            WC()->session->set( 'pickup_chosen_location', $value );
-            
+            if( isset($_POST['location']) ){
+                $value = $_POST['location'];
+                WC()->session->set( 'pickup_chosen_location', $value );
+            }
             die();
         }
         
@@ -162,8 +162,18 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
             if( !empty($shippings) ){
                 foreach( $shippings as $shipping ){
                     $locations = WC_Shipping_Multiple_Local_Pickup::get_available_locations();
-                    $pickup_chosen_location = $shipping['item_meta']['pickup_chosen_location'][0];
-                    return "{$string} <div class='pickup-location'>{$locations[ $pickup_chosen_location ]}</div>";
+                    if( isset($shipping['item_meta']['pickup_chosen_location']) ){
+                        $pickup_chosen_location = $shipping['item_meta']['pickup_chosen_location'][0];
+                        if( isset($locations[ $pickup_chosen_location ]) ){
+                            if( is_admin() ){
+                                return "{$string} <div class='pickup-location'>{$locations[ $pickup_chosen_location ]}</div>";
+                            }
+                            else{
+                                return "{$string} <div class='pickup-location'><strong>{$pickup_chosen_location}</strong>: {$locations[ $pickup_chosen_location ]}</div>";
+                            }
+                        }
+                        return $string;
+                    }
                 }
             }
             
@@ -182,15 +192,19 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
         }
         
         /**
-         * Exibir o local de retirada no admin, na listagem de pedidos
+         * Exibir o local de retirada no admin:
+         * --> listagem de pedidos
+         * --> email de notificação de novo pedido para usuário
          * 
          */
         function order_shipping_method( $string, $order ){
             if( is_admin() ){
                 $shippings = $order->get_items('shipping');
                 if( !empty($shippings) ){
+                    $all_locations = self::get_available_locations();
                     foreach( $shippings as $shipping ){
                         if( isset($shipping['item_meta']['pickup_chosen_location']) ){
+                            $address = $all_locations[ $shipping['item_meta']['pickup_chosen_location'][0] ];
                             return "{$string}: {$shipping['item_meta']['pickup_chosen_location'][0]}";
                         }
                     }
@@ -198,6 +212,14 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
             }
             
             return $string;
+        }
+        
+        /**
+         * Lista de locais disponíveis. Sempre é necessário preenchê-la via filter.
+         * 
+         */
+        public static function get_available_locations(){
+            return apply_filters( 'multiple_local_pickup_locations_list', array() );
         }
     }
     
