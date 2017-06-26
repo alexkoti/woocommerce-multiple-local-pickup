@@ -134,6 +134,10 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
         
     public function is_available( $package = array() ){
         $is_available = true;
+        $all_locations = self::get_available_locations();
+        if( empty($all_locations) ){
+            $is_available = false;
+        }
         return apply_filters( 'woocommerce_shipping_' . $this->id . '_is_available', $is_available, $package );
     }
     
@@ -155,6 +159,10 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
         //pre( $package, 'calculate_shipping: $package' );
     }
     
+    /**
+     * Opções mostradas no carrinho ao usuário
+     * 
+     */
     public static function method_options( $method, $index ){
         
         if( $method->method_id == 'multiple-local-pickup' ){
@@ -167,38 +175,39 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
                 $class = 'brt-display-block';
             }
             
-            //pre($method->get_meta_data());
-            //$method->add_meta_data( 'location', 'lorem' );
-            
             $meta_data = $method->get_meta_data();
             $all_locations = self::get_available_locations();
-            //pre($meta_data['pickup_locations']);
+            //pre($all_locations, 'all_locations');
+            //pre($meta_data, 'meta');
             
-            
-            // aplicar padrão caso ainda não tenha sido escolhido o location
-            //$checked = !empty($meta_data['pickup_chosen_location']) ? $meta_data['pickup_chosen_location'] : key($meta_data['pickup_locations']);
-            $checked = $meta_data['pickup_chosen_location'];
-            
-            echo "<ul id='multiple-pickup-locations-list' class='pickup-locations {$class}'>";
-            foreach( $meta_data['pickup_locations'] as $key ){
-                $is_checked = checked( $key, $checked, false );
-                echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> {$all_locations[$key]}</label></li>";
+            if( !empty($all_locations) ){
+                // aplicar padrão caso ainda não tenha sido escolhido o location
+                //$checked = !empty($meta_data['pickup_chosen_location']) ? $meta_data['pickup_chosen_location'] : key($meta_data['pickup_locations']);
+                $checked = $meta_data['pickup_chosen_location'];
+                
+                echo "<ul id='multiple-pickup-locations-list' class='pickup-locations {$class}'>";
+                $i = 0;
+                foreach( $meta_data['pickup_locations'] as $key ){
+                    $is_checked = checked( $key, $checked, false );
+                    if( $i == 0 and empty($checked) ){
+                        $is_checked = checked( 1, 1, false );
+                    }
+                    echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> <strong>{$key}</strong>: {$all_locations[$key]}</label></li>";
+                    $i++;
+                }
+                echo "</ul>";
             }
-            echo "</ul>";
             
             //pre( $method, 'multiple-local-pickup POS' );
         }
     }
     
+    /**
+     * Lista de locais disponíveis. Sempre é necessário preenchê-la via filter.
+     * 
+     */
     public static function get_available_locations(){
-        return array(
-            'Loja 1' => 'Loja 1 <span>Rua Jacarandá, n° 123, Centro</span>',
-            'Loja 2' => 'Loja 2 <span>Avenida do Oceano, n°10, Zona Norte</span>',
-            'Loja 3' => 'Loja 3 <span>Rua dos Bobos n°0, Bairro Inexistente</span>',
-            'Loja 4' => 'Loja 4 <span>Avenida Dois n° 200, 6° andar, loja 123, Zona Portuária</span>',
-            'Loja 5' => 'Loja 5 <span>Avenida Um</span>',
-            'Loja 6' => 'Loja 6 <span>Rua Sem Saída, sem número, portinhola azul</span>',
-        );
+        return apply_filters( 'multiple_local_pickup_locations_list', array() );
     }
     
     /**
