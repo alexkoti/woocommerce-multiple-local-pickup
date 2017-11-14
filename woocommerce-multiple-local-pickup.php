@@ -25,7 +25,7 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          *
          * @var string
          */
-        const VERSION = '1.0.0';
+        const VERSION = '1.0.1';
         
         /**
          * Instance of this class.
@@ -66,9 +66,6 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
                 // add method
                 add_filter( 'woocommerce_shipping_methods', array( $this, 'include_methods' ) );
                 
-                // action to show pickup locations
-                add_action( 'woocommerce_after_shipping_rate', array( 'WC_Shipping_Multiple_Local_Pickup', 'method_options' ), 10, 2 );
-                
                 // adicionar javascript
                 add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
                 
@@ -83,6 +80,13 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
                 
                 // exibir location na listagem de pedidos E email para usuário
                 add_filter( 'woocommerce_order_shipping_method', array( $this, 'order_shipping_method' ), 10, 2 );
+                
+                // validação para permitir a finalização da compra
+                add_action( 'woocommerce_review_order_before_cart_contents', array( $this, 'validate_order' ), 10 );
+                add_action( 'woocommerce_after_checkout_validation', array( $this, 'validate_order' ), 10 );
+                
+                
+                add_action( 'woocommerce_after_shipping_rate', array( $this, 'method_options' ), 10, 2 );
             } else {
                 add_action( 'admin_notices', array( $this, 'woocommerce_missing_notice' ) );
             }
@@ -147,30 +151,35 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          */
         function update_pickup_location(){
             if( isset($_POST['location']) ){
-                $value = $_POST['location'];
-                WC()->session->set( 'pickup_chosen_location', $value );
+                $location = wc_clean($_POST['location']);
+                WC()->session->set( 'pickup_chosen_location', $location );
+                
+                $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
+                if( isset( $_POST['shipping_method'] ) && is_array( $_POST['shipping_method'] ) ){
+                    foreach( $_POST['shipping_method'] as $i => $value ){
+                        $chosen_shipping_methods[ $i ] = wc_clean( $value );
+                    }
+                }
+                WC()->session->set( 'chosen_shipping_methods', $chosen_shipping_methods );
             }
             die();
         }
         
         /**
-         * Exibir local de retirada no frontend, página do pedido para o usuário
+         * Local de retirada:
+         * --> no frontend, página do pedido para o usuário
+         * --> email de notificação de novo pedido para usuário
          * 
          */
         function shipping_to_display_order_frontend( $string, $order ){
             $shippings = $order->get_items('shipping');
             if( !empty($shippings) ){
                 foreach( $shippings as $shipping ){
-                    $locations = WC_Shipping_Multiple_Local_Pickup::get_available_locations();
-                    if( isset($shipping['item_meta']['pickup_chosen_location']) ){
-                        $pickup_chosen_location = $shipping['item_meta']['pickup_chosen_location'][0];
-                        if( isset($locations[ $pickup_chosen_location ]) ){
-                            if( is_admin() ){
-                                return "{$string} <div class='pickup-location'>{$locations[ $pickup_chosen_location ]}</div>";
-                            }
-                            else{
-                                return "{$string} <div class='pickup-location'><strong>{$pickup_chosen_location}</strong>: {$locations[ $pickup_chosen_location ]}</div>";
-                            }
+                    $all_locations = WC_Shipping_Multiple_Local_Pickup::get_available_locations();
+                    if( isset($shipping['pickup_chosen_location']) ){
+                        $pickup_chosen_location = $shipping['pickup_chosen_location'];
+                        if( isset($all_locations[ $pickup_chosen_location ]) ){
+                            return "{$string} <div class='pickup-location'><strong>{$pickup_chosen_location}</strong>: {$all_locations[ $pickup_chosen_location ]} <br /><strong>Até {$shipping['additional_time']} dias úteis após o pagamento aprovado.</strong></div>";
                         }
                         return $string;
                     }
@@ -185,8 +194,18 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          * 
          */
         function admin_order_location_label( $label, $name, $product ){
-            if( $name == 'pickup_chosen_location' ){
-                return 'Local';
+            switch( $name ){
+                case 'pickup_chosen_location':
+                    $label = 'Local';
+                    break;
+                    
+                case 'additional_time':
+                    $label = 'Prazo';
+                    break;
+                    
+                default:
+                    break;
+                
             }
             return $label;
         }
@@ -194,7 +213,6 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
         /**
          * Exibir o local de retirada no admin:
          * --> listagem de pedidos
-         * --> email de notificação de novo pedido para usuário
          * 
          */
         function order_shipping_method( $string, $order ){
@@ -203,9 +221,8 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
                 if( !empty($shippings) ){
                     $all_locations = self::get_available_locations();
                     foreach( $shippings as $shipping ){
-                        if( isset($shipping['item_meta']['pickup_chosen_location']) ){
-                            $address = $all_locations[ $shipping['item_meta']['pickup_chosen_location'][0] ];
-                            return "{$string}: {$shipping['item_meta']['pickup_chosen_location'][0]}";
+                        if( isset($shipping['pickup_chosen_location']) ){
+                            return "{$string}: {$shipping['pickup_chosen_location']}";
                         }
                     }
                 }
@@ -220,6 +237,81 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          */
         public static function get_available_locations(){
             return apply_filters( 'multiple_local_pickup_locations_list', array() );
+        }
+    
+        /**
+         * Opções mostradas no carrinho ao usuário
+         * 
+         */
+        function method_options( $method, $index ){
+            
+            if( $method->method_id == 'multiple-local-pickup' ){
+                
+                //pre($method, "method_options: {$index}");
+                //pre( $method, 'multiple-local-pickup PRE' );
+                //pre( get_class_methods($method) );
+                
+                $class = 'brt-display-none';
+                $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
+                foreach( $chosen_shipping_methods as $shipping_method ){
+                    if( $shipping_method == $method->id ){
+                        $class = 'brt-display-block';
+                    }
+                }
+                
+                $meta_data = $method->get_meta_data();
+                $all_locations = self::get_available_locations();
+                //pre($all_locations, 'all_locations');
+                //pre($meta_data, 'meta');
+                
+                if( !empty($all_locations) ){
+                    $checked = $meta_data['pickup_chosen_location'];
+                    
+                    echo "<ul id='multiple-pickup-locations-list' class='pickup-locations {$class}'>";
+                    foreach( $meta_data['pickup_locations'] as $key ){
+                        $is_checked = checked( $key, $checked, false );
+                        
+                        // deixar marcado no form e na sessão caso exista apenas um local
+                        if( count($meta_data['pickup_locations']) == 1 ){
+                            $is_checked = checked( 1, 1, false );
+                            WC()->session->set( 'pickup_chosen_location', $key );
+                        }
+                        echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> <strong>{$key}</strong>: {$all_locations[$key]} <strong>Até {$meta_data['additional_time']} dias úteis após o pagamento aprovado.</strong></label></li>";
+                    }
+                    echo "</ul>";
+                }
+            }
+        }
+        
+        function validate_order( $posted ){
+            $packages = WC()->shipping->get_packages();
+            $chosen_methods = WC()->session->get( 'chosen_shipping_methods' );
+            $pickup_chosen_location = WC()->session->get( 'pickup_chosen_location' );
+            //pre($posted, 'validate_order: $posted');
+            //pre($packages, 'validate_order: $packages', false);
+            //pre($chosen_methods, 'validate_order: $chosen_methods', false);
+            
+            $is_multiple_local_pickup = false;
+            
+            if( is_array( $chosen_methods ) ){
+                foreach( $packages as $i => $package ){
+                    $method_name = explode(':', $chosen_methods[$i]);
+                    if( $method_name[0] != 'multiple-local-pickup' ){
+                        continue;
+                    }
+                    else{
+                        $is_multiple_local_pickup = true;
+                    }
+                }
+            }
+            
+            if( $is_multiple_local_pickup == true and is_null($pickup_chosen_location) ){
+                $message = 'É preciso escolher um local de retirada nas opções disponíveis.';
+                $messageType = "error";
+                if( !wc_has_notice( $message, $messageType ) ) {
+                    wc_add_notice( $message, $messageType );
+                }
+            }
         }
     }
     

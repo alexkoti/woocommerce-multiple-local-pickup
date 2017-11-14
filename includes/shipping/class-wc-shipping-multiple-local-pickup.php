@@ -1,6 +1,6 @@
 <?php
 /**
- * Correios Carta Registrada shipping method.
+ * Multiple Pickup Locations shipping method.
  *
  * @package WC_Multiple_Local_Pickup/Classes/Shipping
  * @since   1.0.0
@@ -12,6 +12,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
+    
+    
+    public static $counter = 0;
     
     /**
      * Initialize
@@ -43,6 +46,9 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
 
         // Save admin options.
         add_action( 'woocommerce_update_options_shipping_' . $this->id, array( $this, 'process_admin_options' ) );
+        
+        // Mostrar opções do método de entrega
+        //add_action( 'woocommerce_after_shipping_rate', array( $this, 'method_options' ), 10, 2 );
     }
 
     /**
@@ -151,6 +157,7 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             'meta_data' => array(
                 'pickup_locations' => $this->pickup_locations,
                 'pickup_chosen_location' => WC()->session->get( 'pickup_chosen_location' ),
+                'additional_time' => $this->additional_time,
             ),
         ) );
         
@@ -163,16 +170,25 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
      * Opções mostradas no carrinho ao usuário
      * 
      */
-    public static function method_options( $method, $index ){
+    function method_options( $method, $index ){
+        
+        // Rodar apenas uma vez
+        if( self::$counter > 0 ){
+            return;
+        }
         
         if( $method->method_id == 'multiple-local-pickup' ){
             
+            //pre($method, "method_options: {$index}");
             //pre( $method, 'multiple-local-pickup PRE' );
+            //pre( get_class_methods($method) );
             
-            $class = 'brt-display-none-';
+            $class = 'brt-display-none';
             $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
-            if( $chosen_shipping_methods[0] == $method->id ){
-                $class = 'brt-display-block';
+            foreach( $chosen_shipping_methods as $shipping_method ){
+                if( $shipping_method == $method->id ){
+                    $class = 'brt-display-block';
+                }
             }
             
             $meta_data = $method->get_meta_data();
@@ -181,23 +197,23 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             //pre($meta_data, 'meta');
             
             if( !empty($all_locations) ){
-                // aplicar padrão caso ainda não tenha sido escolhido o location
-                //$checked = !empty($meta_data['pickup_chosen_location']) ? $meta_data['pickup_chosen_location'] : key($meta_data['pickup_locations']);
                 $checked = $meta_data['pickup_chosen_location'];
                 
                 echo "<ul id='multiple-pickup-locations-list' class='pickup-locations {$class}'>";
-                $i = 0;
                 foreach( $meta_data['pickup_locations'] as $key ){
                     $is_checked = checked( $key, $checked, false );
-                    if( $i == 0 and empty($checked) ){
+                    
+                    // deixar marcado no form e na sessão caso exista apenas um local
+                    if( count($meta_data['pickup_locations']) == 1 ){
                         $is_checked = checked( 1, 1, false );
+                        WC()->session->set( 'pickup_chosen_location', $key );
                     }
-                    echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> <strong>{$key}</strong>: {$all_locations[$key]}</label></li>";
-                    $i++;
+                    echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> <strong>{$key}</strong>: {$all_locations[$key]} <strong>Até {$meta_data['additional_time']} dias úteis após o pagamento aprovado.</strong></label></li>";
                 }
                 echo "</ul>";
             }
             
+            self::$counter++;
             //pre( $method, 'multiple-local-pickup POS' );
         }
     }
