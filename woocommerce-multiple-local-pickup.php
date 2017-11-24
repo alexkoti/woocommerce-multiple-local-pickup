@@ -25,7 +25,7 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          *
          * @var string
          */
-        const VERSION = '1.0.0';
+        const VERSION = '1.0.2';
         
         /**
          * Instance of this class.
@@ -40,6 +40,8 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          * @var string
          */
         protected $ajax_endpoint = 'multiple_local_pickup';
+        
+        public static $counter = 0;
 
         /**
          * Return an instance of this class.
@@ -198,18 +200,29 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          * 
          */
         function order_shipping_method( $string, $order ){
+            // Rodar apenas uma vez
+            if( self::$counter > 0 ){
+                return;
+            }
+            
             if( is_admin() ){
                 $shippings = $order->get_items('shipping');
+                
                 if( !empty($shippings) ){
                     $all_locations = self::get_available_locations();
                     foreach( $shippings as $shipping ){
-                        if( isset($shipping['item_meta']['pickup_chosen_location']) ){
-                            $address = $all_locations[ $shipping['item_meta']['pickup_chosen_location'][0] ];
-                            return "{$string}: {$shipping['item_meta']['pickup_chosen_location'][0]}";
+                        $metas = $shipping->get_meta_data();
+                        foreach( $metas as $meta ){
+                            $m = $meta->get_data();
+                            if( $m['key'] == 'pickup_chosen_location' ){
+                                return "{$string}: {$m['value']}";
+                            }
                         }
                     }
                 }
             }
+            
+            self::$counter++;
             
             return $string;
         }
