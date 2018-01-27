@@ -134,6 +134,12 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
         
     public function is_available( $package = array() ){
         $is_available = true;
+        
+        $customer = WC()->session->get( 'customer' );
+        if( !isset($customer['postcode']) or (isset($customer['postcode']) and empty($customer['postcode'])) ){
+            $is_available = false;
+        }
+        
         $all_locations = self::get_available_locations();
         if( empty($all_locations) ){
             $is_available = false;
@@ -154,9 +160,9 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             ),
         ) );
         
-        //pre( WC()->session, 'session' );
-        //pre( $this->rates );
-        //pre( $package, 'calculate_shipping: $package' );
+        //pre( WC()->session, 'session', false );
+        //pre( $this->rates, 'rates', false );
+        //pre( $package, 'calculate_shipping: $package', false );
     }
     
     /**
@@ -164,14 +170,24 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
      * 
      */
     public static function method_options( $method, $index ){
+            $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
+            $customer = WC()->session->get( 'customer' );
+            //pre( $chosen_shipping_methods, 'chosen_shipping_methods', true);
+            //pre( $customer, 'customer', false);
+            //pre( $method->id, '$method->id', true);
         
         if( $method->method_id == 'multiple-local-pickup' ){
             
             //pre( $method, 'multiple-local-pickup PRE' );
             
-            $class = 'brt-display-none-';
-            $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
-            if( $chosen_shipping_methods[0] == $method->id ){
+            $class = 'brt-display-none';
+            
+            if( !isset($customer['postcode']) or (isset($customer['postcode']) and empty($customer['postcode'])) ){
+                return false;
+            }
+            
+            
+            if( $chosen_shipping_methods[0] == $method->id and (isset($customer['postcode']) and !empty($customer['postcode'])) ){
                 $class = 'brt-display-block';
             }
             
@@ -199,6 +215,7 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             }
             
             //pre( $method, 'multiple-local-pickup POS' );
+            //pre( WC()->session->get( 'customer' ) );
         }
     }
     

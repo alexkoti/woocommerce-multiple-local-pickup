@@ -200,9 +200,12 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          * 
          */
         function order_shipping_method( $string, $order ){
+            $shippings = $order->get_items('shipping');
+            //pre($shippings, '$shippings', false);
+            
             // Rodar apenas uma vez
             if( self::$counter > 0 ){
-                return;
+                //return;
             }
             
             if( is_admin() ){
@@ -212,6 +215,11 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
                     $all_locations = self::get_available_locations();
                     foreach( $shippings as $shipping ){
                         $metas = $shipping->get_meta_data();
+                        
+                        //if( isset($_GET['post_type']) and $_GET['post_type'] == 'shop_order' ){
+                        //    pre($shipping, '$shipping', false);
+                        //}
+                        
                         foreach( $metas as $meta ){
                             $m = $meta->get_data();
                             if( $m['key'] == 'pickup_chosen_location' ){
