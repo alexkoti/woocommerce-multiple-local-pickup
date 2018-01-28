@@ -25,7 +25,7 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
          *
          * @var string
          */
-        const VERSION = '1.0.2';
+        const VERSION = '1.0.6';
         
         /**
          * Instance of this class.
@@ -77,6 +77,9 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
                 // registrar ajax
                 add_action( 'wc_ajax_' . $this->ajax_endpoint, array( $this, 'update_pickup_location' ) );
                 
+                // salvar pickup_location sem javascript
+                add_action( 'woocommerce_before_calculate_totals', array( $this, 'nonjs_calculate_totals' ) );
+                
                 // exibir location no frontend na tela de pedido
                 add_filter( 'woocommerce_order_shipping_to_display', array( $this, 'shipping_to_display_order_frontend' ), 10, 2 );
                 
@@ -85,8 +88,56 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
                 
                 // exibir location na listagem de pedidos E email para usuário
                 add_filter( 'woocommerce_order_shipping_method', array( $this, 'order_shipping_method' ), 10, 2 );
+                
+                // validação para permitir a finalização da compra
+                add_action( 'woocommerce_review_order_before_cart_contents', array( $this, 'validate_order' ), 10 );
+                add_action( 'woocommerce_after_checkout_validation', array( $this, 'validate_order' ), 10 );
             } else {
                 add_action( 'admin_notices', array( $this, 'woocommerce_missing_notice' ) );
+            }
+        }
+        
+        function nonjs_calculate_totals(){
+            
+            // apenas acionar caso tenha sido usado o botão "update totals", que só aparece em noscript
+            if( isset( $_POST['woocommerce_checkout_update_totals'] ) ){
+                $locations = WC_Shipping_Multiple_Local_Pickup::get_available_locations();
+                $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
+                
+                foreach( WC()->shipping->get_packages() as $i => $package ) {
+                    // resetar cache de shipping rates
+                    WC()->session->set( "shipping_for_package_{$i}", false );
+                    
+                    foreach( $package['rates'] as $rate ){
+                        foreach( $chosen_shipping_methods as $i => $chosen_method ){
+                            //error_log( "chosen_method INIT {$chosen_method}" );
+                            //error_log( "rate->method_id {$rate->method_id}" );
+                            //error_log( "rate->id {$rate->id}" );
+                            
+                            // o método escolhido é o multiple-local-pickup
+                            if( $rate->method_id == 'multiple-local-pickup' AND $rate->id == $chosen_method ){
+                                error_log('nonjs_calculate_totals 1');
+                                // caso esteja vazio, aplicar a primeira loja
+                                if( !isset($_POST['pickup-location']) or empty($_POST['pickup-location']) ){
+                                    $location = key($locations);
+                                }
+                                else{
+                                    $location = $_POST['pickup-location'];
+                                }
+                                WC()->session->set( 'pickup_chosen_location', $location );
+                            }
+                            else{
+                                //error_log('nonjs_calculate_totals 2');
+                                //// caso tenha sido selecionado algum radio de local, mas não o método de retirada, acionar a retirada em lojas
+                                //if( isset($_POST['pickup-location']) and !empty($_POST['pickup-location']) and $rate->method_id == 'multiple-local-pickup' ){
+                                //    wc_add_notice( 'Você selecionou um local de retirada, mas não marcou antes a opção "Retirar em loja"', 'error' );
+                                //}
+                                
+                                WC()->session->set( 'pickup_chosen_location', false );
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -134,6 +185,8 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
         public function enqueue_scripts(){
             wp_enqueue_script( 'woocommerce-multiple-local-pickup', plugins_url( 'assets/js/frontend/woocommerce-multiple-local-pickup.js', WC_Multiple_Local_Pickup::get_main_file() ), array( 'jquery' ), WC_Multiple_Local_Pickup::VERSION, true );
             
+            wp_enqueue_style( 'woocommerce-multiple-local-pickup', plugins_url( 'assets/css/frontend/woocommerce-multiple-local-pickup.css', WC_Multiple_Local_Pickup::get_main_file() ), false, WC_Multiple_Local_Pickup::VERSION, 'all' );
+            
             wp_localize_script(
                 'woocommerce-multiple-local-pickup',
                 'WCMultipleLocalPickupParams',
@@ -151,7 +204,16 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
             if( isset($_POST['location']) ){
                 $value = $_POST['location'];
                 WC()->session->set( 'pickup_chosen_location', $value );
+                
+                foreach( WC()->shipping->get_packages() as $i => $package ) {
+                    WC()->session->set( "shipping_for_package_{$i}", false );
+                }
             }
+            
+            //error_log( "ajax:update_pickup_location pickup_chosen_location > {$value}" );
+            print_r( "ajax:update_pickup_location pickup_chosen_location > {$value}\n" );
+            print_r( WC()->session );
+            
             die();
         }
         
@@ -233,6 +295,29 @@ if( !class_exists( 'WC_Multiple_Local_Pickup' ) ){
             self::$counter++;
             
             return $string;
+        }
+        
+        function validate_order( $posted ){
+            
+            $chosen_shipping_methods = WC()->session->get( 'chosen_shipping_methods' );
+            
+            foreach( WC()->shipping->get_packages() as $i => $package ) {
+                foreach( $package['rates'] as $rate ){
+                    foreach( $chosen_shipping_methods as $i => $chosen_method ){
+                        
+                        // o método escolhido é o multiple-local-pickup
+                        if( $rate->method_id == 'multiple-local-pickup' AND $rate->id == $chosen_method ){
+                            $meta_data = $rate->get_meta_data();
+                            if( empty($meta_data['pickup_chosen_location']) ){
+                                $message = 'É preciso escolher um local de retirada nas opções disponíveis.';
+                                if( !wc_has_notice( $message, $messageType ) ) {
+                                    wc_add_notice( $message, 'error');
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         /**

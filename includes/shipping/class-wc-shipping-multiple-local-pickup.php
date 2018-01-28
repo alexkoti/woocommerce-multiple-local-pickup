@@ -149,6 +149,12 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
     
     public function calculate_shipping( $package = array() ){
         
+        // @todo determinar o local inicial
+        $pickup_chosen_location = WC()->session->get( 'pickup_chosen_location' );
+        if( empty($pickup_chosen_location) ){
+            $pickup_chosen_location = current($this->pickup_locations);
+        }
+        
         $this->add_rate( array(
             'label'     => $this->title,
             'cost'      => $this->fee,
@@ -156,9 +162,12 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             'package'   => false,
             'meta_data' => array(
                 'pickup_locations' => $this->pickup_locations,
-                'pickup_chosen_location' => WC()->session->get( 'pickup_chosen_location' ),
+                'pickup_chosen_location' => $pickup_chosen_location,
             ),
         ) );
+        
+        error_log( " UPDATE calculate_shipping: {$pickup_chosen_location}" );
+        //print_r( $package );
         
         //pre( WC()->session, 'session', false );
         //pre( $this->rates, 'rates', false );
@@ -180,33 +189,32 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             
             //pre( $method, 'multiple-local-pickup PRE' );
             
-            $class = 'brt-display-none';
-            
             if( !isset($customer['postcode']) or (isset($customer['postcode']) and empty($customer['postcode'])) ){
                 return false;
             }
             
-            
-            if( $chosen_shipping_methods[0] == $method->id and (isset($customer['postcode']) and !empty($customer['postcode'])) ){
-                $class = 'brt-display-block';
+            // aplicar local padrão caso ainda não tenha sido escolhido o location, MAS apenas se o método estiver escolhido
+            $checked = '';
+            foreach( $chosen_shipping_methods as $i => $chosen_method ){
+                if( $chosen_method == $method->id and (isset($customer['postcode']) and !empty($customer['postcode'])) ){
+                    $checked = WC()->session->get( 'pickup_chosen_location' );
+                }
             }
             
             $meta_data = $method->get_meta_data();
             $all_locations = self::get_available_locations();
             //pre($all_locations, 'all_locations');
-            //pre($meta_data, 'meta');
+            //pre($meta_data, 'meta_data');
             
             if( !empty($all_locations) ){
-                // aplicar padrão caso ainda não tenha sido escolhido o location
-                //$checked = !empty($meta_data['pickup_chosen_location']) ? $meta_data['pickup_chosen_location'] : key($meta_data['pickup_locations']);
-                $checked = $meta_data['pickup_chosen_location'];
                 
-                echo "<ul id='multiple-pickup-locations-list' class='pickup-locations {$class}'>";
+                echo "<ul id='multiple-pickup-locations-list' class='pickup-locations'>";
                 $i = 0;
                 foreach( $meta_data['pickup_locations'] as $key ){
                     $is_checked = checked( $key, $checked, false );
                     if( $i == 0 and empty($checked) ){
                         $is_checked = checked( 1, 1, false );
+                        //WC()->session->set( 'pickup_chosen_location', $key );
                     }
                     echo "<li><label><input type='radio' name='pickup-location' value='{$key}' id='pickup-location-{$key}' {$is_checked} /> <strong>{$key}</strong>: {$all_locations[$key]}</label></li>";
                     $i++;
@@ -215,7 +223,10 @@ class WC_Shipping_Multiple_Local_Pickup extends WC_Shipping_Method {
             }
             
             //pre( $method, 'multiple-local-pickup POS' );
-            //pre( WC()->session->get( 'customer' ) );
+            //pre( WC()->session->get( 'pickup_chosen_location' ), 'pickup_chosen_location' );
+            //pre( WC()->session, 'session', true );
+            //pre( WC()->shipping->get_packages(), 'WC()->shipping->get_packages()', false );
+            //pre( $_POST, '_POST' );
         }
     }
     

@@ -1,0 +1,8 @@
+
+ul#shipping_method li > input.shipping_method[type=radio] ~ .pickup-locations {
+    display: none;
+}
+
+ul#shipping_method li > input.shipping_method[type=radio]:checked ~ .pickup-locations {
+    display: block;
+}

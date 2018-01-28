@@ -26,6 +26,8 @@ jQuery( function( $ ) {
                     
                 },
                 complete: function() {
+                    console.log( 'complete WCMultipleLocalPickup 111' );
+                    //$( document.body ).trigger( 'update_checkout' );
                     WCMultipleLocalPickup.unblock( $('div.cart_totals, form.checkout, form#order_review') );
                 }
             });
